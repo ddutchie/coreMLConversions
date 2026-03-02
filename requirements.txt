@@ -1,0 +1,4 @@
+torch==2.3.0
+coremltools==7.2
+spandrel
+safetensors
