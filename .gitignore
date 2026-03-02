@@ -1,0 +1,16 @@
+# Model files in models/ are tracked with Git LFS or excluded from diff output
+# Converted CoreML packages can be large — track with LFS if committing to output/
+*.mlpackage
+*.mlmodel
+*.pth
+*.safetensors
+*.ckpt
+*.pt
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# macOS
+.DS_Store

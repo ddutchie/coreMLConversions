@@ -1,0 +1,99 @@
+name: Convert Models to CoreML
+
+on:
+  # Trigger automatically when model files are pushed to models/
+  push:
+    paths:
+      - 'models/**/*.pth'
+      - 'models/**/*.safetensors'
+
+  # Allow manually triggering with a specific model file
+  workflow_dispatch:
+    inputs:
+      model_file:
+        description: 'Path to model file in models/ folder (e.g. 4xLSDIR.pth)'
+        required: false
+        default: ''
+      tile_size:
+        description: 'Tile size (default: 512)'
+        required: false
+        default: '512'
+
+jobs:
+  convert:
+    # macOS is required — coremltools only fully works on macOS
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install torch==2.3.0 torchvision --index-url https://download.pytorch.org/whl/cpu
+          pip install coremltools==7.2 spandrel safetensors
+
+      - name: Find models to convert
+        id: find_models
+        run: |
+          if [ -n "${{ github.event.inputs.model_file }}" ]; then
+            # Manual trigger: convert specific file
+            echo "models=${{ github.event.inputs.model_file }}" >> $GITHUB_OUTPUT
+          else
+            # Auto trigger: find all pushed models
+            models=$(git diff --name-only HEAD~1 HEAD -- 'models/*.pth' 'models/*.safetensors' | tr '\n' ',')
+            echo "models=$models" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Convert models
+        run: |
+          tile_size="${{ github.event.inputs.tile_size || '512' }}"
+          mkdir -p output
+
+          IFS=',' read -ra model_list <<< "${{ steps.find_models.outputs.models }}"
+          any_failed=0
+
+          for model_file in "${model_list[@]}"; do
+            [ -z "$model_file" ] && continue
+            [ ! -f "$model_file" ] && echo "File not found: $model_file" && continue
+
+            basename=$(basename "$model_file" .pth)
+            basename="${basename%.safetensors}"
+            output_path="output/${basename}.mlpackage"
+
+            echo "Converting: $model_file -> $output_path"
+            python convert.py \
+              --model "$model_file" \
+              --output "$output_path" \
+              --tile-size "$tile_size" \
+              --mlprogram || any_failed=1
+          done
+
+          exit $any_failed
+
+      - name: Upload converted models as artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coreml-models
+          path: output/
+          retention-days: 90
+          if-no-files-found: warn
+
+      - name: Commit converted models back to repo (optional)
+        if: success() && github.event_name == 'push'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add output/
+          git diff --staged --quiet || git commit -m "ci: Add converted CoreML models [skip ci]"
+          git push
