@@ -53,7 +53,7 @@ jobs:
             echo "models=$models" >> $GITHUB_OUTPUT
           fi
 
-      - name: Convert models
+      - name: Convert and zip models
         run: |
           tile_size="${{ github.event.inputs.tile_size || '512' }}"
           mkdir -p output
@@ -68,13 +68,21 @@ jobs:
             basename=$(basename "$model_file" .pth)
             basename="${basename%.safetensors}"
             output_path="output/${basename}.mlpackage"
+            zip_path="output/${basename}.mlpackage.zip"
 
             echo "Converting: $model_file -> $output_path"
             python convert.py \
               --model "$model_file" \
               --output "$output_path" \
               --tile-size "$tile_size" \
-              --mlprogram || any_failed=1
+              --mlprogram || { any_failed=1; continue; }
+
+            # .mlpackage is a directory — zip it so it can be served as a single download URL
+            echo "Zipping: $output_path -> $zip_path"
+            cd output
+            zip -r "${basename}.mlpackage.zip" "${basename}.mlpackage"
+            cd ..
+            rm -rf "$output_path"
           done
 
           exit $any_failed
