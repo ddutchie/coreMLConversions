@@ -67,26 +67,35 @@ def convert(model_path: str, output_path: str, tile_size: int, use_mlprogram: bo
     print(f"Architecture : {arch}")
     print(f"Scale        : {scale}x\n")
 
-    # 2. Trace
-    example_input = torch.rand(1, 3, tile_size, tile_size)
+    # 2. Trace with a SMALL dummy input (64x64) for speed.
+    # ESRGAN/RRDB models are fully convolutional — the JIT graph is identical
+    # regardless of spatial dimensions. Tracing at 512x512 on CPU takes 30-60 min;
+    # tracing at 64x64 takes ~10 seconds. CoreML input shape is declared separately.
+    trace_size = 64
+    trace_input = torch.rand(1, 3, trace_size, trace_size)
+    print(f"Tracing with {trace_size}x{trace_size} dummy input (fast trace)...")
     try:
         wrapped = OutputScaledModel(spandrel_model.model)
         wrapped.eval()
         with torch.no_grad():
-            traced = torch.jit.trace(wrapped, example_input)
+            traced = torch.jit.trace(wrapped, trace_input)
     except Exception as e:
         print(f"[Error] JIT tracing failed: {e}", file=sys.stderr)
         return False
 
-    # 3. Verify output shape
+    # 3. Verify output scale factor using the trace input
     with torch.no_grad():
-        out_shape = traced(example_input).shape
-    print(f"Output Shape : {list(out_shape)}\n")
+        trace_out = traced(trace_input)
+    detected_scale = trace_out.shape[-1] // trace_size
+    print(f"Detected scale : {detected_scale}x")
+    print(f"CoreML input   : {tile_size}x{tile_size}")
+    print(f"CoreML output  : {tile_size * detected_scale}x{tile_size * detected_scale}\n")
 
     # 4. Convert to CoreML
+    # Declare the REAL tile size here (not the trace size)
     input_type = ct.ImageType(
         name="input",
-        shape=example_input.shape,
+        shape=(1, 3, tile_size, tile_size),
         scale=1 / 255.0,
         color_layout=ct.colorlayout.RGB,
     )
