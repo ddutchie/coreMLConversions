@@ -1,11 +1,6 @@
-# Model files in models/ are tracked with Git LFS or excluded from diff output
-# Converted CoreML packages can be large — track with LFS if committing to output/
-*.mlpackage
-*.mlmodel
-*.pth
-*.safetensors
-*.ckpt
-*.pt
+# Model binaries are tracked via Git LFS (see .gitattributes)
+# Intermediate extracted outputs (not needed in git)
+output/.DS_Store
 
 # Python
 __pycache__/
