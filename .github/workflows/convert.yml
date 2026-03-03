@@ -46,8 +46,11 @@ jobs:
         run: |
           mkdir -p output
           if [ -n "${{ github.event.inputs.model_file }}" ]; then
-            # Manual trigger: convert a specific file
-            echo "models=${{ github.event.inputs.model_file }}" >> $GITHUB_OUTPUT
+            # Manual trigger: accept just filename OR full path (e.g. "4xLSDIR.pth" or "models/4xLSDIR.pth")
+            model_input="${{ github.event.inputs.model_file }}"
+            [[ "$model_input" != models/* ]] && model_input="models/${model_input}"
+            echo "models=${model_input}" >> $GITHUB_OUTPUT
+            echo "Manual conversion: ${model_input}"
           else
             # Auto trigger: scan models/ for any .pth or .safetensors without a
             # corresponding .mlpackage.zip in output/ (i.e. not yet converted).
