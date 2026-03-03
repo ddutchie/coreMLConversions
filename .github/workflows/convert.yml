@@ -30,6 +30,14 @@ jobs:
         with:
           lfs: true
 
+      - name: Fetch LFS objects
+        run: |
+          git lfs pull
+          echo "--- models/ contents ---"
+          ls -lh models/ || echo "(empty)"
+          echo "--- LFS status ---"
+          git lfs status
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
