@@ -44,13 +44,26 @@ jobs:
       - name: Find models to convert
         id: find_models
         run: |
+          mkdir -p output
           if [ -n "${{ github.event.inputs.model_file }}" ]; then
-            # Manual trigger: convert specific file
+            # Manual trigger: convert a specific file
             echo "models=${{ github.event.inputs.model_file }}" >> $GITHUB_OUTPUT
           else
-            # Auto trigger: find all pushed models
-            models=$(git diff --name-only HEAD~1 HEAD -- 'models/*.pth' 'models/*.safetensors' | tr '\n' ',')
-            echo "models=$models" >> $GITHUB_OUTPUT
+            # Auto trigger: scan models/ for any .pth or .safetensors without a
+            # corresponding .mlpackage.zip in output/ (i.e. not yet converted).
+            # This is more reliable than git diff on shallow clones with LFS.
+            model_list=""
+            for f in models/*.pth models/*.safetensors; do
+              [ -f "$f" ] || continue
+              basename=$(basename "$f" .pth)
+              basename="${basename%.safetensors}"
+              zip="output/${basename}.mlpackage.zip"
+              if [ ! -f "$zip" ]; then
+                model_list="${model_list}${f},"
+              fi
+            done
+            echo "models=$model_list" >> $GITHUB_OUTPUT
+            echo "Pending conversions: $model_list"
           fi
 
       - name: Convert and zip models
